@@ -5,8 +5,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Презентация — М Фулфилмент</title>
+
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: #101820;
+    }
 
     body {
       margin: 0;
@@ -21,12 +28,18 @@
       margin: 0 auto;
     }
 
+    .slide-frame {
+      width: 100%;
+      margin-bottom: 12px;
+      overflow: hidden;
+      background: #101820;
+    }
+
     .slide {
       display: block;
       width: 100%;
       height: auto;
-      margin: 0 0 12px;
-      background: #fff;
+      background: transparent;
     }
 
     #status {
@@ -36,13 +49,18 @@
     }
 
     @media (max-width: 640px) {
-      body { padding: 0; }
-      .slide { margin-bottom: 4px; }
+      body {
+        padding: 0;
+      }
+
+      .slide-frame {
+        margin-bottom: 4px;
+      }
     }
   </style>
 </head>
-<body>
 
+<body>
   <div id="status">Загружаем презентацию...</div>
   <main id="slides"></main>
 
@@ -59,46 +77,98 @@
     const container = document.getElementById("slides");
     const status = document.getElementById("status");
 
-    async function renderSlides() {
-      try {
-        const pdf = await pdfjsLib.getDocument(file).promise;
+    let renderVersion = 0;
+    let resizeTimer;
 
-        container.replaceChildren();
+    async function renderSlides() {
+      const version = ++renderVersion;
+
+      try {
+        status.style.display = "block";
+
+        const pdf = await pdfjsLib.getDocument(file).promise;
+        if (version !== renderVersion) return;
 
         const width = container.clientWidth;
-        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const pixelRatio = Math.min(
+          window.devicePixelRatio || 1, 2
+        );
+
+        const fragment = document.createDocumentFragment();
 
         for (let i = 1; i <= pdf.numPages; i++) {
+          if (version !== renderVersion) return;
+
           const page = await pdf.getPage(i);
           const original = page.getViewport({ scale: 1 });
           const scale = width / original.width;
+
           const viewport = page.getViewport({
             scale: scale * pixelRatio
           });
 
           const canvas = document.createElement("canvas");
-          canvas.className = "slide";
+
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
 
-          const context = canvas.getContext("2d");
+          const context = canvas.getContext("2d", {
+            alpha: false
+          });
+
+          context.fillStyle = "#101820";
+          context.fillRect(
+            0, 0, canvas.width, canvas.height
+          );
 
           await page.render({
             canvasContext: context,
             viewport: viewport
           }).promise;
 
-          container.appendChild(canvas);
+          const frame = document.createElement("div");
+          frame.className = "slide-frame";
+
+          const croppedCanvas = document.createElement("canvas");
+          croppedCanvas.className = "slide";
+
+          const crop = Math.min(
+            pixelRatio,
+            Math.floor((canvas.width - 1) / 2),
+            Math.floor((canvas.height - 1) / 2)
+          );
+
+          croppedCanvas.width = canvas.width - crop * 2;
+          croppedCanvas.height = canvas.height - crop * 2;
+
+          croppedCanvas.getContext("2d").drawImage(
+            canvas,
+            crop,
+            crop,
+            croppedCanvas.width,
+            croppedCanvas.height,
+            0,
+            0,
+            croppedCanvas.width,
+            croppedCanvas.height
+          );
+
+          frame.appendChild(croppedCanvas);
+          fragment.appendChild(frame);
         }
 
+        if (version !== renderVersion) return;
+
+        container.replaceChildren(fragment);
         status.style.display = "none";
+
       } catch (error) {
+        if (version !== renderVersion) return;
+
         status.textContent =
           "Не удалось загрузить презентацию. " + error.message;
       }
     }
-
-    let resizeTimer;
 
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimer);
@@ -107,6 +177,5 @@
 
     renderSlides();
   </script>
-
 </body>
 </html>
