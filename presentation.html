@@ -2,180 +2,270 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Презентация — М Фулфилмент</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Презентация — М Фулфилмент</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<style>
+* { box-sizing: border-box; }
 
-    html {
-      background: #101820;
-    }
+html, body {
+  margin: 0;
+  background: #101820;
+  font-family: Arial, sans-serif;
+}
 
-    body {
-      margin: 0;
-      padding: 12px;
-      background: #101820;
-      font-family: Arial, sans-serif;
-    }
+body { padding: 12px; }
 
-    #slides {
-      width: 100%;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
+#slides {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
 
-    .slide-frame {
-      width: 100%;
-      margin-bottom: 12px;
-      overflow: hidden;
-      background: #101820;
-    }
+.slide-frame {
+  width: 100%;
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: #101820;
+}
 
-    .slide {
-      display: block;
-      width: 100%;
-      height: auto;
-      background: transparent;
-    }
+.slide {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #101820;
+}
 
-    #status {
-      color: white;
-      text-align: center;
-      padding: 30px;
-    }
+.placeholder {
+  width: 100%;
+  background: #17232e;
+}
 
-    @media (max-width: 640px) {
-      body {
-        padding: 0;
-      }
+#status {
+  color: #fff;
+  text-align: center;
+  padding: 24px;
+  font-size: 14px;
+}
 
-      .slide-frame {
-        margin-bottom: 4px;
-      }
-    }
-  </style>
+@media (max-width: 640px) {
+  body { padding: 0; }
+  .slide-frame { margin-bottom: 4px; }
+}
+</style>
 </head>
 
 <body>
-  <div id="status">Загружаем презентацию...</div>
-  <main id="slides"></main>
+<div id="status">Открываем презентацию...</div>
+<main id="slides"></main>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-  <script>
-    const file = encodeURI(
-      "М_Фулфилмент_ Презентация_2026.pdf"
-    );
+<script>
+const PDF_FILE = encodeURI(
+  "М_Фулфилмент_ Презентация_2026.pdf"
+);
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-    const container = document.getElementById("slides");
-    const status = document.getElementById("status");
+const container = document.getElementById("slides");
+const status = document.getElementById("status");
 
-    let renderVersion = 0;
-    let resizeTimer;
+const pixelRatio = Math.min(
+  window.devicePixelRatio || 1, 2
+);
 
-    async function renderSlides() {
-      const version = ++renderVersion;
+let pdf;
+let observer;
+let renderQueue = [];
+let processing = false;
+let firstSlideShown = false;
 
-      try {
-        status.style.display = "block";
+function nextFrame() {
+  return new Promise(resolve =>
+    requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    )
+  );
+}
 
-        const pdf = await pdfjsLib.getDocument(file).promise;
-        if (version !== renderVersion) return;
+async function renderPage(pageNumber, frame) {
+  const page = await pdf.getPage(pageNumber);
 
-        const width = container.clientWidth;
-        const pixelRatio = Math.min(
-          window.devicePixelRatio || 1, 2
-        );
+  const original = page.getViewport({ scale: 1 });
+  const width = frame.clientWidth;
+  const scale = width / original.width;
 
-        const fragment = document.createDocumentFragment();
+  const viewport = page.getViewport({
+    scale: scale * pixelRatio
+  });
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          if (version !== renderVersion) return;
+  const canvas = document.createElement("canvas");
 
-          const page = await pdf.getPage(i);
-          const original = page.getViewport({ scale: 1 });
-          const scale = width / original.width;
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
 
-          const viewport = page.getViewport({
-            scale: scale * pixelRatio
-          });
+  const context = canvas.getContext("2d", {
+    alpha: false
+  });
 
-          const canvas = document.createElement("canvas");
+  context.fillStyle = "#101820";
+  context.fillRect(
+    0, 0, canvas.width, canvas.height
+  );
 
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
+  await page.render({
+    canvasContext: context,
+    viewport
+  }).promise;
 
-          const context = canvas.getContext("2d", {
-            alpha: false
-          });
+  // Убираем возможные светлые пиксели
+  // по краям PDF.
+  const crop = Math.min(
+    Math.ceil(pixelRatio),
+    Math.floor((canvas.width - 1) / 2),
+    Math.floor((canvas.height - 1) / 2)
+  );
 
-          context.fillStyle = "#101820";
-          context.fillRect(
-            0, 0, canvas.width, canvas.height
-          );
+  const result = document.createElement("canvas");
+  result.className = "slide";
 
-          await page.render({
-            canvasContext: context,
-            viewport: viewport
-          }).promise;
+  result.width = canvas.width - crop * 2;
+  result.height = canvas.height - crop * 2;
 
-          const frame = document.createElement("div");
-          frame.className = "slide-frame";
+  result.getContext("2d", {
+    alpha: false
+  }).drawImage(
+    canvas,
+    crop,
+    crop,
+    result.width,
+    result.height,
+    0,
+    0,
+    result.width,
+    result.height
+  );
 
-          const croppedCanvas = document.createElement("canvas");
-          croppedCanvas.className = "slide";
+  frame.replaceChildren(result);
 
-          const crop = Math.min(
-            pixelRatio,
-            Math.floor((canvas.width - 1) / 2),
-            Math.floor((canvas.height - 1) / 2)
-          );
+  if (!firstSlideShown) {
+    firstSlideShown = true;
+    status.style.display = "none";
+  }
+}
 
-          croppedCanvas.width = canvas.width - crop * 2;
-          croppedCanvas.height = canvas.height - crop * 2;
+function enqueue(pageNumber, frame) {
+  if (frame.dataset.state !== "waiting") return;
 
-          croppedCanvas.getContext("2d").drawImage(
-            canvas,
-            crop,
-            crop,
-            croppedCanvas.width,
-            croppedCanvas.height,
-            0,
-            0,
-            croppedCanvas.width,
-            croppedCanvas.height
-          );
+  frame.dataset.state = "queued";
+  renderQueue.push({ pageNumber, frame });
 
-          frame.appendChild(croppedCanvas);
-          fragment.appendChild(frame);
-        }
+  processQueue();
+}
 
-        if (version !== renderVersion) return;
+async function processQueue() {
+  if (processing) return;
 
-        container.replaceChildren(fragment);
-        status.style.display = "none";
+  processing = true;
 
-      } catch (error) {
-        if (version !== renderVersion) return;
+  while (renderQueue.length) {
+    const task = renderQueue.shift();
 
-        status.textContent =
-          "Не удалось загрузить презентацию. " + error.message;
-      }
+    try {
+      await renderPage(
+        task.pageNumber,
+        task.frame
+      );
+
+      task.frame.dataset.state = "ready";
+
+    } catch (error) {
+      task.frame.dataset.state = "error";
+      console.error(
+        "Ошибка слайда:",
+        task.pageNumber,
+        error
+      );
     }
 
-    window.addEventListener("resize", () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(renderSlides, 400);
+    // Даём браузеру показать готовый слайд,
+    // прежде чем обрабатывать следующий.
+    await nextFrame();
+  }
+
+  processing = false;
+}
+
+async function start() {
+  try {
+    pdf = await pdfjsLib.getDocument({
+      url: PDF_FILE,
+      disableAutoFetch: false
+    }).promise;
+
+    const firstPage = await pdf.getPage(1);
+    const original = firstPage.getViewport({
+      scale: 1
     });
 
-    renderSlides();
-  </script>
+    const ratio = original.height / original.width;
+
+    const frames = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const frame = document.createElement("section");
+      frame.className = "slide-frame";
+      frame.dataset.state = "waiting";
+
+      const placeholder = document.createElement("div");
+      placeholder.className = "placeholder";
+      placeholder.style.aspectRatio =
+        original.width + " / " + original.height;
+
+      frame.appendChild(placeholder);
+      container.appendChild(frame);
+      frames.push(frame);
+    }
+
+    // Первый слайд имеет высший приоритет.
+    enqueue(1, frames[0]);
+
+    // Остальные слайды загружаются по мере
+    // приближения к области просмотра.
+    observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+
+          const index = frames.indexOf(entry.target);
+
+          if (index >= 0) {
+            enqueue(index + 1, entry.target);
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      {
+        rootMargin: "800px 0px",
+        threshold: 0
+      }
+    );
+
+    frames.forEach((frame, index) => {
+      if (index > 0) observer.observe(frame);
+    });
+
+  } catch (error) {
+    status.textContent =
+      "Не удалось открыть презентацию. " +
+      error.message;
+  }
+}
+
+start();
+</script>
 </body>
 </html>
