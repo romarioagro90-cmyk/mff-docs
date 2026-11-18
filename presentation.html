@@ -1,1 +1,112 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Презентация — М Фулфилмент</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 12px;
+      background: #101820;
+      font-family: Arial, sans-serif;
+    }
+
+    #slides {
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .slide {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin: 0 0 12px;
+      background: #fff;
+    }
+
+    #status {
+      color: white;
+      text-align: center;
+      padding: 30px;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 0; }
+      .slide { margin-bottom: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="status">Загружаем презентацию...</div>
+  <main id="slides"></main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <script>
+    const file = encodeURI(
+      "М_Фулфилмент_ Презентация_2026.pdf"
+    );
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const container = document.getElementById("slides");
+    const status = document.getElementById("status");
+
+    async function renderSlides() {
+      try {
+        const pdf = await pdfjsLib.getDocument(file).promise;
+
+        container.replaceChildren();
+
+        const width = container.clientWidth;
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const original = page.getViewport({ scale: 1 });
+          const scale = width / original.width;
+          const viewport = page.getViewport({
+            scale: scale * pixelRatio
+          });
+
+          const canvas = document.createElement("canvas");
+          canvas.className = "slide";
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+
+          const context = canvas.getContext("2d");
+
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+
+          container.appendChild(canvas);
+        }
+
+        status.style.display = "none";
+      } catch (error) {
+        status.textContent =
+          "Не удалось загрузить презентацию. " + error.message;
+      }
+    }
+
+    let resizeTimer;
+
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(renderSlides, 400);
+    });
+
+    renderSlides();
+  </script>
+
+</body>
+</html>
